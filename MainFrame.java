@@ -1,245 +1,173 @@
 import java.awt.BorderLayout;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.io.DataOutputStream;
+import java.io.DataInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.PrintStream;
-
+import java.io.IOException;
+import java.util.ArrayList;
 import javax.swing.AbstractAction;
 import javax.swing.Action;
-import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.JButton;
+import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
-import javax.swing.JLabel;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.JScrollPane;
-import javax.swing.JTable;
-import javax.swing.JTextField;
+import javax.swing.event.MenuEvent;
+import javax.swing.event.MenuListener;
 
-@SuppressWarnings("serial")
+
 public class MainFrame extends JFrame {
-    private static final int WIDTH = 700;
-    private static final int HEIGHT = 500;
-    private Double[] coefficients;
+    // Начальные размеры окна приложения
+    private static final int WIDTH = 1280;
+    private static final int HEIGHT = 720;
+    // Объект диалогового окна для выбора файлов
     private JFileChooser fileChooser = null;
-    private JMenuItem saveToTextMenuItem;
-    private JMenuItem saveToGraphicsMenuItem;
-    private JMenuItem searchValueMenuItem;
-    private JMenuItem showReferenceMenuItem;
-    private JTextField textFieldFrom;
-    private JTextField textFieldTo;
-    private JTextField textFieldStep;
-    private Box hBoxResult;
-    private GornerTableCellRenderer renderer = new GornerTableCellRenderer();
-    private GornerTableModel data;
+    // Пункты меню
+    private JCheckBoxMenuItem showAxisMenuItem;
+    private JCheckBoxMenuItem showMarkersMenuItem;
+    private JMenuItem resetGraphicsMenuItem;
+    // Компонент-отображатель графика
+    private GraphicsDisplay display = new GraphicsDisplay();
+    // Флаг, указывающий на загруженность данных графика
+    private boolean fileLoaded = false;
 
-    @SuppressWarnings("removal")
-    public MainFrame(Double[] coefficients) {
-        super("Табулирование многочлена на отрезке по схеме Горнера");
-        this.coefficients = coefficients;
+    public MainFrame() {
+        // Вызов конструктора предка Frame
+        super("Построение графиков функций на основе заранее подготовленных файлов");
+        // Установка размеров окна
         setSize(WIDTH, HEIGHT);
         Toolkit kit = Toolkit.getDefaultToolkit();
-        setLocation((kit.getScreenSize().width - WIDTH)/2, (kit.getScreenSize().height - HEIGHT)/2);
+        // Отцентрировать окно приложения на экране
+        setLocation((kit.getScreenSize().width - WIDTH) / 2, (kit.getScreenSize().height - HEIGHT) / 2);
+        // Развёртывание окна на весь экран
+        setExtendedState(MAXIMIZED_BOTH);
+        // Создать и установить полосу меню
         JMenuBar menuBar = new JMenuBar();
         setJMenuBar(menuBar);
+        // Добавить пункт меню "Файл"
         JMenu fileMenu = new JMenu("Файл");
         menuBar.add(fileMenu);
-        JMenu tableMenu = new JMenu("Таблица");
-        menuBar.add(tableMenu);
-        JMenu referenceMenu = new JMenu("Справка");
-        menuBar.add(referenceMenu);
-
-        Action saveToTextAction = new AbstractAction("Сохранить в текстовый файл") {
+        // Создать действие по открытию файла
+        Action openGraphicsAction = new AbstractAction("Открыть файл с графиком") {
             public void actionPerformed(ActionEvent event) {
-                if (fileChooser==null) {
+                if (fileChooser == null) {
                     fileChooser = new JFileChooser();
                     fileChooser.setCurrentDirectory(new File("."));
                 }
-                if (fileChooser.showSaveDialog(MainFrame.this) == JFileChooser.APPROVE_OPTION)
-                    saveToTextFile(fileChooser.getSelectedFile());
+                if (fileChooser.showOpenDialog(MainFrame.this) == JFileChooser.APPROVE_OPTION)
+                    openGraphics(fileChooser.getSelectedFile());
             }
         };
-        saveToTextMenuItem = fileMenu.add(saveToTextAction);
-        saveToTextMenuItem.setEnabled(false);
-
-        Action saveToGraphicsAction = new AbstractAction("Сохранить данные для построения графика") {
+        // Добавить соответствующий элемент меню
+        fileMenu.add(openGraphicsAction);
+        // Создать пункт меню "График"
+        JMenu graphicsMenu = new JMenu("График");
+        menuBar.add(graphicsMenu);
+        // Создать действие для реакции на активацию элемента "Показывать оси координат"
+        Action showAxisAction = new AbstractAction("Показывать оси  координат") {
             public void actionPerformed(ActionEvent event) {
-                if (fileChooser==null) {
-                    fileChooser = new JFileChooser();
-                    fileChooser.setCurrentDirectory(new File("."));
-                }
-                if (fileChooser.showSaveDialog(MainFrame.this) ==
-                        JFileChooser.APPROVE_OPTION);
-                saveToGraphicsFile(fileChooser.getSelectedFile());
+                // свойство showAxis класса GraphicsDisplay истина, если элемент меню
+                // showAxisMenuItem отмечен флажком, и ложь - в противном случае
+                MainFrame.this.display.setShowAxis(showAxisMenuItem.isSelected());
             }
         };
-        saveToGraphicsMenuItem = fileMenu.add(saveToGraphicsAction);
-        saveToGraphicsMenuItem.setEnabled(false);
+        JMenu refMenu = new JMenu("Справка");
+        menuBar.add(refMenu);
 
-        Action searchValueAction = new AbstractAction("Найти значение многочлена") {
+        Action showInformationAction = new AbstractAction("О программе") {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                JOptionPane.showMessageDialog(MainFrame.this, "Илья Жук ✔ \n10 группа ✔\n2-й курс ✔\n)",
+                        "Информация о студенте", JOptionPane.PLAIN_MESSAGE);
+            }
+        };
+        JMenuItem showInformationMenuItem = refMenu.add(showInformationAction);
+        showInformationMenuItem.setEnabled(true);
+        showAxisMenuItem = new JCheckBoxMenuItem(showAxisAction);
+        // Добавить соответствующий элемент в меню
+        graphicsMenu.add(showAxisMenuItem);
+        // Элемент по умолчанию включен (отмечен флажком)
+        showAxisMenuItem.setSelected(true);
+        // Повторить действия для элемента "Показывать маркеры точек"
+        Action showMarkersAction = new AbstractAction("Показывать маркеры точек") {
             public void actionPerformed(ActionEvent event) {
-                String value = JOptionPane.showInputDialog(MainFrame.this, "Введите значение для поиска",
-                        "Поиск значения", JOptionPane.QUESTION_MESSAGE);
-                renderer.setNeedle(value);
-                getContentPane().repaint();
+                // по аналогии с showAxisMenuItem
+                MainFrame.this.display.setShowMarkers(showMarkersMenuItem.isSelected());
             }
         };
-        searchValueMenuItem = tableMenu.add(searchValueAction);
-        searchValueMenuItem.setEnabled(false);
-
-        Action showReferenceAction = new AbstractAction("О программе") {
+        showMarkersMenuItem = new JCheckBoxMenuItem(showMarkersAction);
+        graphicsMenu.add(showMarkersMenuItem);
+        // Элемент по умолчанию включен (отмечен флажком)
+        showMarkersMenuItem.setSelected(true);
+        Action resetGraphicsAction = new AbstractAction("Отменить все изменения") {
             public void actionPerformed(ActionEvent event) {
-                JOptionPane.showMessageDialog(MainFrame.this, "Работу выполнил студент 10 группы Жук .Илья.");
-
+                MainFrame.this.display.reset();
             }
         };
-        showReferenceMenuItem = referenceMenu.add(showReferenceAction);
-        showReferenceMenuItem.setEnabled(true);
-
-        JLabel labelForFrom = new JLabel("X изменяется на интервале от:");
-        textFieldFrom = new JTextField("0.0", 10);
-        textFieldFrom.setMaximumSize(textFieldFrom.getPreferredSize());
-        JLabel labelForTo = new JLabel("до:");
-        textFieldTo = new JTextField("1.0", 10);
-        textFieldTo.setMaximumSize(textFieldTo.getPreferredSize());
-        JLabel labelForStep = new JLabel("с шагом:");
-        textFieldStep = new JTextField("0.1", 10);
-        textFieldStep.setMaximumSize(textFieldStep.getPreferredSize());
-        Box hboxRange = Box.createHorizontalBox();
-        hboxRange.setBorder(BorderFactory.createBevelBorder(1));
-        hboxRange.add(Box.createHorizontalGlue());
-        hboxRange.add(labelForFrom);
-        hboxRange.add(Box.createHorizontalStrut(10));
-        hboxRange.add(textFieldFrom);
-        hboxRange.add(Box.createHorizontalStrut(20));
-        hboxRange.add(labelForTo);
-        hboxRange.add(Box.createHorizontalStrut(10));
-        hboxRange.add(textFieldTo);
-        hboxRange.add(Box.createHorizontalStrut(20));
-        hboxRange.add(labelForStep);
-        hboxRange.add(Box.createHorizontalStrut(10));
-        hboxRange.add(textFieldStep);
-        hboxRange.add(Box.createHorizontalGlue());
-//		hboxRange.setPreferredSize(new Dimension(
-//				new Double(hboxRange.getMaximumSize().getWidth()).intValue(),
-//				new Double(hboxRange.getMinimumSize().getHeight()).intValue()*2));
-        getContentPane().add(hboxRange, BorderLayout.SOUTH);
-
-        JButton buttonCalc = new JButton("Вычислить");
-        buttonCalc.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent ev) {
-                try {
-                    Double from = Double.parseDouble(textFieldFrom.getText());
-                    Double to = Double.parseDouble(textFieldTo.getText());
-                    Double step = Double.parseDouble(textFieldStep.getText());
-                    data = new GornerTableModel(from, to, step, MainFrame.this.coefficients);
-                    JTable table = new JTable(data);
-                    table.setDefaultRenderer(Double.class, renderer);
-                    table.setRowHeight(30);
-                    buttonCalc.removeAll();
-                    hBoxResult.add(new JScrollPane(table));
-                    getContentPane().validate();
-                    saveToTextMenuItem.setEnabled(true);
-                    saveToGraphicsMenuItem.setEnabled(true);
-                    searchValueMenuItem.setEnabled(true);
-                } catch (NumberFormatException ex) {
-                    JOptionPane.showMessageDialog(MainFrame.this,
-                            "Ошибка в формате записи числа с плавающей точкой", "Ошибочный формат числа",
-                            JOptionPane.WARNING_MESSAGE);
-                }
-            }
-        });
-
-        JButton buttonReset = new JButton("Очистить поля");
-        buttonReset.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent ev) {
-                textFieldFrom.setText("0.0");
-                textFieldTo.setText("1.0");
-                textFieldStep.setText("0.1");
-                hBoxResult.removeAll();
-                hBoxResult.add(new JPanel());
-                saveToTextMenuItem.setEnabled(false);
-                saveToGraphicsMenuItem.setEnabled(false);
-                searchValueMenuItem.setEnabled(false);
-                getContentPane().validate();
-            }
-        });
-
-        Box hboxButtons = Box.createHorizontalBox();
-        hboxButtons.setBorder(BorderFactory.createBevelBorder(1));
-        hboxButtons.add(Box.createHorizontalGlue());
-        hboxButtons.add(buttonCalc);
-        hboxButtons.add(Box.createHorizontalStrut(30));
-        hboxButtons.add(buttonReset);
-        hboxButtons.add(Box.createHorizontalGlue());
-//		hboxButtons.setPreferredSize(new Dimension(new
-//				Double(hboxButtons.getMaximumSize().getWidth()).intValue(), new
-//				Double(hboxButtons.getMinimumSize().getHeight()).intValue()*2));
-        getContentPane().add(hboxButtons, BorderLayout.NORTH);
-        hBoxResult = Box.createHorizontalBox();
-//		hBoxResult.add(new JPanel());
-        getContentPane().add(hBoxResult, BorderLayout.CENTER);
+        resetGraphicsMenuItem = new JMenuItem(resetGraphicsAction);
+        graphicsMenu.add(resetGraphicsMenuItem);
+        resetGraphicsMenuItem.setEnabled(false);
+        // Зарегистрировать обработчик событий, связанных с меню "График"
+        graphicsMenu.addMenuListener(new GraphicsMenuListener());
+        // Установить GraphicsDisplay в цент граничной компоновки
+        getContentPane().add(display, BorderLayout.CENTER);
     }
 
-    protected void saveToGraphicsFile(File selectedFile) {
+    // Считывание данных графика из существующего файла
+    protected void openGraphics(File selectedFile) {
         try {
-            DataOutputStream out = new DataOutputStream(new
-                    FileOutputStream(selectedFile));
-            for (int i = 0; i<data.getRowCount(); i++) {
-                out.writeDouble((Double)data.getValueAt(i,0));
-                out.writeDouble((Double)data.getValueAt(i,1));
+            DataInputStream in = new DataInputStream(new FileInputStream(selectedFile));
+            ArrayList graphicsData = new ArrayList(50);
+            while (in.available() > 0) {
+                Double x = Double.valueOf(in.readDouble());
+                Double y = Double.valueOf(in.readDouble());
+                graphicsData.add(new Double[] { x, y });
             }
-            out.close();
-        } catch (Exception e) { }
-    }
-
-    protected void saveToTextFile(File selectedFile) {
-        try {
-            PrintStream out = new PrintStream(selectedFile);
-            out.println("Результаты табулирования многочлена по схеме Горнера");
-            out.print("Многочлен: ");
-            for (int i=0; i<coefficients.length; i++) {
-                out.print(coefficients[i] + "*X^" + (coefficients.length-i-1));
-                if (i!=coefficients.length-1)
-                    out.print(" + ");
+            if (graphicsData.size() > 0) {
+                fileLoaded = true;
+                resetGraphicsMenuItem.setEnabled(true);
+                display.showGraphics(graphicsData);
             }
-            out.println("");
-            out.println("Интервал от " + data.getFrom() + " до " + data.getTo() + " с шагом " + data.getStep());
-            out.println("====================================================");
-            for (int i = 0; i<data.getRowCount(); i++) {
-                out.println("Значение в точке " + data.getValueAt(i,0) + " равно " + data.getValueAt(i,1) + " и больше 0 " + data.getValueAt(i,2));
-            }
-            out.close();
-        } catch (FileNotFoundException e) { }
+            // Шаг 5 - Закрыть входной поток
+            in.close();
+        } catch (FileNotFoundException ex) {
+            // В случае исключительной ситуации типа "Файл не найден" показать сообщение об ошибке
+            JOptionPane.showMessageDialog(MainFrame.this, "Указанный файл не найден", "Ошибка загрузки данных", JOptionPane.WARNING_MESSAGE);
+            return;
+        } catch (IOException ex) {
+            // В случае ошибки ввода из файлового потока показать сообщение об ошибке
+            JOptionPane.showMessageDialog(MainFrame.this, "Ошибка чтения  координат точек из файла", "Ошибка загрузки данных",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
     }
 
     public static void main(String[] args) {
-        if (args.length==0) {
-            System.out.println("Невозможно табулировать многочлен, для которого не задано ни одного коэффициента!");
-            System.exit(-1);
-        }
-        Double[] coefficients = new Double[args.length];
-        int i = 0;
-        try {
-            for (String arg: args) {
-                coefficients[i++] = Double.parseDouble(arg);
-            }
-        }
-        catch (NumberFormatException ex) {
-            System.out.println("Ошибка преобразования строки '" + args[i] + "' в число типа Double");
-            System.exit(-2);
-        }
-        MainFrame frame = new MainFrame(coefficients);
+        // Создать и показать экземпляр главного окна приложения
+        MainFrame frame = new MainFrame();
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setVisible(true);
+    }
+
+    // Класс-слушатель событий, связанных с отображением меню
+    private class GraphicsMenuListener implements MenuListener {
+        // Обработчик, вызываемый перед показом меню
+        public void menuSelected(MenuEvent e) {
+            // Доступность или недоступность элементов меню "График" определяется загруженностью данных
+            showAxisMenuItem.setEnabled(fileLoaded);
+            showMarkersMenuItem.setEnabled(fileLoaded);
+        }
+
+        // Обработчик, вызываемый после того, как меню исчезло с экрана
+        public void menuDeselected(MenuEvent e) {
+        }
+
+        // Обработчик, вызываемый в случае отмены выбора пункта меню (очень редкая ситуация)
+        public void menuCanceled(MenuEvent e) {
+        }
     }
 }
